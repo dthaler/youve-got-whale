@@ -18,7 +18,15 @@ var host = new HostBuilder()
             return new AmazonSimpleEmailServiceClient(region);
         });
         services.AddSingleton<CosmosClient>(_ =>
-            new CosmosClient(Environment.GetEnvironmentVariable("CosmosDbConnection")));
+        {
+            string? connectionString = Environment.GetEnvironmentVariable("CosmosDbConnection");
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException("CosmosDbConnection environment variable is not configured");
+            }
+
+            return new CosmosClient(connectionString);
+        });
     })
     .Build();
 
