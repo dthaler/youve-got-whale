@@ -3,15 +3,17 @@
     "Values": {
         "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
-        "CosmosDbConnection": "<your-cosmos-db-connection-string>",
-        "CosmosDbDatabase": "detections",
+        "CosmosDbConnection": "<read-only-detections-cosmos-db-connection-string>",
+        "CosmosDbDatabase": "predictions",
         "CosmosDbContainer": "metadata",
-        "StorageConnection": "<your-storage-account-connection-string>",
+        "NotificationCosmosDbConnection": "<read-write-notifications-cosmos-db-connection-string>",
+        "NotificationCosmosDbDatabase": "orcasound-cosmosdb",
+        "NotificationCosmosDbContainer": "Notifications",
         "SenderEmail": "<your-sender-email@example.com>",
         "AwsRegion": "us-west-2",
-        "NODE_NAME": "<hydrophone-location-name>",
-        "EMAIL_DESTINATION": "<notification-recipient@example.com>",
-        "NOTIFICATION_PERIOD_MINUTES": "60",
-        "DETECTION_PERIOD_MINUTES": "15"
+        "LocationId": "<hydrophone-location-id>",
+        "RecipientEmail": "<notification-recipient@example.com>",
+        "NotificationPeriodMinutes": "60",
+        "DetectionPeriodMinutes": "15"
     }
 }

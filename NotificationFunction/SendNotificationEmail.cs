@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
-using Azure;
-using Azure.Data.Tables;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
@@ -18,15 +16,18 @@ namespace NotificationFunction
         private readonly ILogger _logger;
         private readonly IAmazonSimpleEmailService _sesClient;
         private readonly CosmosClient _cosmosClient;
+        private readonly NotificationStateStore _notificationStateStore;
 
         public SendNotificationEmail(
             ILogger<SendNotificationEmail> logger,
             IAmazonSimpleEmailService sesClient,
-            CosmosClient cosmosClient)
+            CosmosClient cosmosClient,
+            NotificationStateStore notificationStateStore)
         {
             _logger = logger;
             _sesClient = sesClient;
             _cosmosClient = cosmosClient;
+            _notificationStateStore = notificationStateStore;
         }
 
         [Function("SendNotificationEmail")]
@@ -36,8 +37,7 @@ namespace NotificationFunction
                 containerName: "%CosmosDbContainer%",
                 Connection = "CosmosDbConnection",
                 LeaseContainerName = "leases",
-                CreateLeaseContainerIfNotExists = true)] IReadOnlyList<JsonElement> input,
-            [TableInput("NotificationState", Connection = "StorageConnection")] TableClient tableClient)
+                CreateLeaseContainerIfNotExists = true)] IReadOnlyList<JsonElement> input)
         {
             if (input == null || input.Count == 0)
             {
@@ -102,7 +102,7 @@ namespace NotificationFunction
             }
 
             // Check if a notification was sent within NotificationPeriodMinutes.
-            DateTime? lastNotificationTime = await GetLastNotificationTimeAsync(tableClient, locationId);
+            DateTime? lastNotificationTime = await _notificationStateStore.GetLastNotificationTimeAsync(locationId);
             if (lastNotificationTime.HasValue &&
                 DateTime.UtcNow - lastNotificationTime.Value < TimeSpan.FromMinutes(notificationPeriodMinutes))
             {
@@ -149,32 +149,7 @@ namespace NotificationFunction
                 nodeName);
 
             // Update last notification time.
-            await UpdateLastNotificationTimeAsync(tableClient, locationId);
-        }
-
-        private async Task<DateTime?> GetLastNotificationTimeAsync(TableClient tableClient, string nodeId)
-        {
-            try
-            {
-                Azure.Response<NotificationStateEntity> response =
-                    await tableClient.GetEntityAsync<NotificationStateEntity>("NotificationState", nodeId);
-                return response.Value.LastNotificationTime;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
-            {
-                return null;
-            }
-        }
-
-        private async Task UpdateLastNotificationTimeAsync(TableClient tableClient, string nodeName)
-        {
-            var entity = new NotificationStateEntity
-            {
-                PartitionKey = "NotificationState",
-                RowKey = nodeName,
-                LastNotificationTime = DateTime.UtcNow
-            };
-            await tableClient.UpsertEntityAsync(entity);
+            await _notificationStateStore.UpdateLastNotificationTimeAsync(locationId);
         }
 
         private async Task<int> CountRecentDetectionsAsync(string locationId, int periodMinutes)

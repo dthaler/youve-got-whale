@@ -2,6 +2,8 @@
 
 Azure Functions app that sends email alerts when whale detections cluster at a configured hydrophone node.
 
+The detections container is treated as read-only. Notification rate-limit state is stored in a separate writable Cosmos DB container.
+
 ## Configuration
 
 Copy `NotificationFunction/local.settings.json.example` to `NotificationFunction/local.settings.json` for local development and set these values:
@@ -10,10 +12,12 @@ Copy `NotificationFunction/local.settings.json.example` to `NotificationFunction
 | --- | --- | --- | --- |
 | `AzureWebJobsStorage` | Yes | — | Azure Functions storage connection |
 | `FUNCTIONS_WORKER_RUNTIME` | Yes | `dotnet-isolated` | Azure Functions worker runtime |
-| `CosmosDbConnection` | Yes | — | Cosmos DB connection string |
+| `CosmosDbConnection` | Yes | — | Read-only detections Cosmos DB connection string |
 | `CosmosDbDatabase` | No | `predictions` | Cosmos DB database name |
 | `CosmosDbContainer` | No | `metadata` | Cosmos DB container name |
-| `StorageConnection` | Yes | — | Azure Table Storage connection string |
+| `NotificationCosmosDbConnection` | Yes | — | Read-write notifications Cosmos DB connection string |
+| `NotificationCosmosDbDatabase` | No | `orcasound-cosmosdb` | Notifications Cosmos DB database name |
+| `NotificationCosmosDbContainer` | No | `Notifications` | Notifications Cosmos DB container name |
 | `SenderEmail` | Yes | — | AWS SES sender address |
 | `AwsRegion` | No | `us-west-2` | AWS region for SES |
 | `LocationId` | Yes | — | Hydrophone location ID to monitor |
