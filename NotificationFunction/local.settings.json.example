@@ -1,0 +1,16 @@
+{
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+        "CosmosDbConnection": "<your-cosmos-db-connection-string>",
+        "CosmosDbDatabase": "detections",
+        "CosmosDbContainer": "metadata",
+        "StorageConnection": "<your-storage-account-connection-string>",
+        "SenderEmail": "<your-sender-email@example.com>",
+        "NODE_NAME": "<hydrophone-location-name>",
+        "EMAIL_DESTINATION": "<notification-recipient@example.com>",
+        "NOTIFICATION_PERIOD_MINUTES": "60",
+        "DETECTION_PERIOD_MINUTES": "15"
+    }
+}

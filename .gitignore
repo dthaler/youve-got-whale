@@ -1,0 +1,16 @@
+# Build artifacts
+bin/
+obj/
+
+# Local settings (contains secrets - use local.settings.json.example as template)
+**/local.settings.json
+
+# Visual Studio
+.vs/
+*.user
+
+# Rider
+.idea/
+
+# macOS
+.DS_Store
