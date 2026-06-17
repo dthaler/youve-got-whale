@@ -8,6 +8,7 @@
         "CosmosDbContainer": "metadata",
         "StorageConnection": "<your-storage-account-connection-string>",
         "SenderEmail": "<your-sender-email@example.com>",
+        "AwsRegion": "us-west-2",
         "NODE_NAME": "<hydrophone-location-name>",
         "EMAIL_DESTINATION": "<notification-recipient@example.com>",
         "NOTIFICATION_PERIOD_MINUTES": "60",

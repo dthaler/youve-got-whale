@@ -7,7 +7,6 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -47,6 +46,7 @@ namespace NotificationFunction
 
             string? nodeName = Environment.GetEnvironmentVariable("NODE_NAME");
             string? emailDestination = Environment.GetEnvironmentVariable("EMAIL_DESTINATION");
+            string? senderEmail = Environment.GetEnvironmentVariable("SenderEmail");
 
             if (string.IsNullOrEmpty(nodeName))
             {
@@ -60,17 +60,34 @@ namespace NotificationFunction
                 return;
             }
 
+            if (string.IsNullOrEmpty(senderEmail))
+            {
+                _logger.LogError("SenderEmail environment variable is not configured");
+                return;
+            }
+
             int notificationPeriodMinutes = int.TryParse(
                 Environment.GetEnvironmentVariable("NOTIFICATION_PERIOD_MINUTES"), out int np) ? np : 60;
             int detectionPeriodMinutes = int.TryParse(
                 Environment.GetEnvironmentVariable("DETECTION_PERIOD_MINUTES"), out int dp) ? dp : 15;
 
             // Check if any triggered document matches NODE_NAME and is an unreviewed detection
-            bool hasMatchingDetection = input.Any(doc =>
-                (!doc.TryGetProperty("reviewed", out JsonElement reviewed) || reviewed.ValueKind != JsonValueKind.True) &&
-                doc.TryGetProperty("location", out JsonElement location) &&
-                location.TryGetProperty("name", out JsonElement locationName) &&
-                locationName.GetString() == nodeName);
+            bool hasMatchingDetection = false;
+            foreach (JsonElement doc in input)
+            {
+                if (doc.TryGetProperty("reviewed", out JsonElement reviewed) &&
+                    reviewed.ValueKind == JsonValueKind.True)
+                {
+                    continue;
+                }
+                if (doc.TryGetProperty("location", out JsonElement location) &&
+                    location.TryGetProperty("name", out JsonElement locationName) &&
+                    locationName.GetString() == nodeName)
+                {
+                    hasMatchingDetection = true;
+                    break;
+                }
+            }
 
             if (!hasMatchingDetection)
             {
@@ -101,7 +118,6 @@ namespace NotificationFunction
             }
 
             // Send email notification
-            string senderEmail = Environment.GetEnvironmentVariable("SenderEmail") ?? string.Empty;
             string subject = $"Whale detection at {nodeName}";
             string body = $"<p>A whale has been detected at <strong>{nodeName}</strong>.</p>" +
                           $"<p>There have been {recentDetectionCount} detections in the past {detectionPeriodMinutes} minutes.</p>" +
@@ -123,8 +139,8 @@ namespace NotificationFunction
 
             await _sesClient.SendEmailAsync(emailRequest);
             _logger.LogInformation(
-                "Sent notification email to {EmailDestination} for {NodeName}",
-                emailDestination, nodeName);
+                "Sent notification email for {NodeName}",
+                nodeName);
 
             // Update last notification time
             await UpdateLastNotificationTimeAsync(tableClient, nodeName);
@@ -163,18 +179,20 @@ namespace NotificationFunction
             Container container = _cosmosClient.GetContainer(databaseName, containerName);
             long cutoffTimestamp = DateTimeOffset.UtcNow.AddMinutes(-periodMinutes).ToUnixTimeSeconds();
 
+            // Use TOP 2 rather than COUNT so the query can short-circuit once the threshold is found
             var query = new QueryDefinition(
-                "SELECT VALUE COUNT(1) FROM c WHERE c.location.name = @nodeName AND c._ts >= @cutoffTime")
+                "SELECT TOP 2 c.id FROM c WHERE c.location.name = @nodeName AND c._ts >= @cutoffTime")
                 .WithParameter("@nodeName", nodeName)
                 .WithParameter("@cutoffTime", cutoffTimestamp);
 
-            using FeedIterator<int> iterator = container.GetItemQueryIterator<int>(query);
-            if (iterator.HasMoreResults)
+            int count = 0;
+            using FeedIterator<JsonElement> iterator = container.GetItemQueryIterator<JsonElement>(query);
+            while (iterator.HasMoreResults && count < 2)
             {
-                FeedResponse<int> results = await iterator.ReadNextAsync();
-                return results.FirstOrDefault();
+                FeedResponse<JsonElement> results = await iterator.ReadNextAsync();
+                count += results.Count;
             }
-            return 0;
+            return count;
         }
     }
 }

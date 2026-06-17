@@ -11,7 +11,11 @@ var host = new HostBuilder()
     {
         services.AddLogging();
         services.AddSingleton<IAmazonSimpleEmailService>(_ =>
-            new AmazonSimpleEmailServiceClient(RegionEndpoint.USWest2));
+        {
+            string regionName = Environment.GetEnvironmentVariable("AwsRegion") ?? "us-west-2";
+            var region = RegionEndpoint.GetBySystemName(regionName);
+            return new AmazonSimpleEmailServiceClient(region);
+        });
         services.AddSingleton<CosmosClient>(_ =>
             new CosmosClient(Environment.GetEnvironmentVariable("CosmosDbConnection")));
     })
