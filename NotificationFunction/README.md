@@ -31,3 +31,19 @@ Copy `NotificationFunction/local.settings.json.example` to `NotificationFunction
 cd NotificationFunction
 dotnet build
 ```
+
+## Test
+
+```sh
+# From the repository root:
+dotnet test NotificationFunction.sln
+```
+
+The solution includes two test projects:
+
+- **`NotificationFunction.Tests.Unit`** – unit tests for the document-matching and
+  notification-suppression logic; all external dependencies are mocked and no cloud
+  connections are needed.
+- **`NotificationFunction.Tests.Integration`** – integration tests that exercise the
+  full `ProcessDocumentsAsync` pipeline end-to-end with mocked SES, detection
+  counter, and state store; also requires no cloud connections.

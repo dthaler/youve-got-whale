@@ -30,7 +30,8 @@ var host = new HostBuilder()
             return new AmazonSimpleEmailServiceClient(region);
         });
         services.AddSingleton<CosmosClient>(_ => new CosmosClient(GetRequiredEnvironmentVariable("CosmosDbConnection")));
-        services.AddSingleton<NotificationStateStore>(_ =>
+        services.AddSingleton<IDetectionCounter, CosmosDetectionCounter>();
+        services.AddSingleton<INotificationStateStore>(_ =>
             new NotificationStateStore(
                 GetRequiredEnvironmentVariable("NotificationCosmosDbConnection"),
                 Environment.GetEnvironmentVariable("NotificationCosmosDbDatabase") ?? "orcasound-cosmosdb",
