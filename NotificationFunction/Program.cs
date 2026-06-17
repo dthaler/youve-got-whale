@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 using Amazon;
 using Amazon.SimpleEmail;
 using Microsoft.Azure.Cosmos;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
 using Azure;
@@ -71,7 +72,7 @@ namespace NotificationFunction
             int detectionPeriodMinutes = int.TryParse(
                 Environment.GetEnvironmentVariable("DETECTION_PERIOD_MINUTES"), out int dp) ? dp : 15;
 
-            // Check if any triggered document matches NODE_NAME and is an unreviewed detection
+            // Check if any triggered document matches NODE_NAME and is an unreviewed detection.
             bool hasMatchingDetection = false;
             foreach (JsonElement doc in input)
             {
@@ -95,7 +96,7 @@ namespace NotificationFunction
                 return;
             }
 
-            // Check if a notification was sent within NOTIFICATION_PERIOD_MINUTES
+            // Check if a notification was sent within NOTIFICATION_PERIOD_MINUTES.
             DateTime? lastNotificationTime = await GetLastNotificationTimeAsync(tableClient, nodeName);
             if (lastNotificationTime.HasValue &&
                 DateTime.UtcNow - lastNotificationTime.Value < TimeSpan.FromMinutes(notificationPeriodMinutes))
@@ -107,7 +108,7 @@ namespace NotificationFunction
                 return;
             }
 
-            // Check if at least one other detection from NODE_NAME occurred in past DETECTION_PERIOD_MINUTES
+            // Check if at least one other detection from NODE_NAME occurred in past DETECTION_PERIOD_MINUTES.
             int recentDetectionCount = await CountRecentDetectionsAsync(nodeName, detectionPeriodMinutes);
             if (recentDetectionCount < 2)
             {
@@ -117,7 +118,7 @@ namespace NotificationFunction
                 return;
             }
 
-            // Send email notification
+            // Send email notification.
             string subject = $"Whale detection at {nodeName}";
             string body = $"<p>A whale has been detected at <strong>{nodeName}</strong>.</p>" +
                           $"<p>There have been {recentDetectionCount} detections in the past {detectionPeriodMinutes} minutes.</p>" +
@@ -142,7 +143,7 @@ namespace NotificationFunction
                 "Sent notification email for {NodeName}",
                 nodeName);
 
-            // Update last notification time
+            // Update last notification time.
             await UpdateLastNotificationTimeAsync(tableClient, nodeName);
         }
 
@@ -179,7 +180,7 @@ namespace NotificationFunction
             Container container = _cosmosClient.GetContainer(databaseName, containerName);
             long cutoffTimestamp = DateTimeOffset.UtcNow.AddMinutes(-periodMinutes).ToUnixTimeSeconds();
 
-            // Use TOP 2 rather than COUNT so the query can short-circuit once the threshold is found
+            // Use TOP 2 rather than COUNT so the query can short-circuit once the threshold is found.
             var query = new QueryDefinition(
                 "SELECT TOP 2 c.id FROM c WHERE c.location.name = @nodeName AND c._ts >= @cutoffTime")
                 .WithParameter("@nodeName", nodeName)

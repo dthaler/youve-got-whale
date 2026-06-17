@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 using Azure;
 using Azure.Data.Tables;
 using System;
