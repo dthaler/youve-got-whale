@@ -1,4 +1,4 @@
-# you've got whale
+# You've Got Whale
 
 Azure Functions app that sends email alerts when whale detections cluster at a configured hydrophone node.
 
