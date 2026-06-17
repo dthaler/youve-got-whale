@@ -45,19 +45,20 @@ namespace NotificationFunction
                 return;
             }
 
-            string? nodeName = Environment.GetEnvironmentVariable("NODE_NAME");
-            string? emailDestination = Environment.GetEnvironmentVariable("EMAIL_DESTINATION");
+            string? locationId = Environment.GetEnvironmentVariable("LocationId");
+            string? recipientEmail = Environment.GetEnvironmentVariable("RecipientEmail");
             string? senderEmail = Environment.GetEnvironmentVariable("SenderEmail");
+            string nodeName = string.Empty;
 
-            if (string.IsNullOrEmpty(nodeName))
+            if (string.IsNullOrEmpty(locationId))
             {
-                _logger.LogError("NODE_NAME environment variable is not configured");
+                _logger.LogError("LocationId environment variable is not configured");
                 return;
             }
 
-            if (string.IsNullOrEmpty(emailDestination))
+            if (string.IsNullOrEmpty(recipientEmail))
             {
-                _logger.LogError("EMAIL_DESTINATION environment variable is not configured");
+                _logger.LogError("RecipientEmail environment variable is not configured");
                 return;
             }
 
@@ -68,11 +69,11 @@ namespace NotificationFunction
             }
 
             int notificationPeriodMinutes = int.TryParse(
-                Environment.GetEnvironmentVariable("NOTIFICATION_PERIOD_MINUTES"), out int np) ? np : 60;
+                Environment.GetEnvironmentVariable("NotificationPeriodMinutes"), out int np) ? np : 60;
             int detectionPeriodMinutes = int.TryParse(
-                Environment.GetEnvironmentVariable("DETECTION_PERIOD_MINUTES"), out int dp) ? dp : 15;
+                Environment.GetEnvironmentVariable("DetectionPeriodMinutes"), out int dp) ? dp : 15;
 
-            // Check if any triggered document matches NODE_NAME and is an unreviewed detection.
+            // Check if any triggered document matches LocationId and is an unreviewed detection.
             bool hasMatchingDetection = false;
             foreach (JsonElement doc in input)
             {
@@ -82,22 +83,26 @@ namespace NotificationFunction
                     continue;
                 }
                 if (doc.TryGetProperty("location", out JsonElement location) &&
-                    location.TryGetProperty("name", out JsonElement locationName) &&
-                    locationName.GetString() == nodeName)
+                    location.TryGetProperty("id", out JsonElement locationIdElement) &&
+                    locationIdElement.GetString() == locationId)
                 {
                     hasMatchingDetection = true;
+                    if (location.TryGetProperty("name", out JsonElement locationName))
+                    {
+                        nodeName = locationName.GetString() ?? locationId;   
+                    }
                     break;
                 }
             }
 
             if (!hasMatchingDetection)
             {
-                _logger.LogInformation("No unreviewed detections for node {NodeName}", nodeName);
+                _logger.LogInformation("No unreviewed detections for node {LocationId}", locationId);
                 return;
             }
 
-            // Check if a notification was sent within NOTIFICATION_PERIOD_MINUTES.
-            DateTime? lastNotificationTime = await GetLastNotificationTimeAsync(tableClient, nodeName);
+            // Check if a notification was sent within NotificationPeriodMinutes.
+            DateTime? lastNotificationTime = await GetLastNotificationTimeAsync(tableClient, locationId);
             if (lastNotificationTime.HasValue &&
                 DateTime.UtcNow - lastNotificationTime.Value < TimeSpan.FromMinutes(notificationPeriodMinutes))
             {
@@ -108,8 +113,8 @@ namespace NotificationFunction
                 return;
             }
 
-            // Check if at least one other detection from NODE_NAME occurred in past DETECTION_PERIOD_MINUTES.
-            int recentDetectionCount = await CountRecentDetectionsAsync(nodeName, detectionPeriodMinutes);
+            // Check if at least one other detection from LocationId occurred in past DetectionPeriodMinutes.
+            int recentDetectionCount = await CountRecentDetectionsAsync(locationId, detectionPeriodMinutes);
             if (recentDetectionCount < 2)
             {
                 _logger.LogInformation(
@@ -127,7 +132,7 @@ namespace NotificationFunction
             var emailRequest = new SendEmailRequest
             {
                 Source = senderEmail,
-                Destination = new Destination(new List<string> { emailDestination }),
+                Destination = new Destination(new List<string> { recipientEmail }),
                 Message = new Message
                 {
                     Subject = new Content(subject),
@@ -144,15 +149,15 @@ namespace NotificationFunction
                 nodeName);
 
             // Update last notification time.
-            await UpdateLastNotificationTimeAsync(tableClient, nodeName);
+            await UpdateLastNotificationTimeAsync(tableClient, locationId);
         }
 
-        private async Task<DateTime?> GetLastNotificationTimeAsync(TableClient tableClient, string nodeName)
+        private async Task<DateTime?> GetLastNotificationTimeAsync(TableClient tableClient, string nodeId)
         {
             try
             {
                 Azure.Response<NotificationStateEntity> response =
-                    await tableClient.GetEntityAsync<NotificationStateEntity>("NotificationState", nodeName);
+                    await tableClient.GetEntityAsync<NotificationStateEntity>("NotificationState", nodeId);
                 return response.Value.LastNotificationTime;
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
@@ -172,7 +177,7 @@ namespace NotificationFunction
             await tableClient.UpsertEntityAsync(entity);
         }
 
-        private async Task<int> CountRecentDetectionsAsync(string nodeName, int periodMinutes)
+        private async Task<int> CountRecentDetectionsAsync(string locationId, int periodMinutes)
         {
             string databaseName = Environment.GetEnvironmentVariable("CosmosDbDatabase")
                 ?? throw new InvalidOperationException("CosmosDbDatabase environment variable is not configured");
@@ -184,8 +189,8 @@ namespace NotificationFunction
 
             // Use TOP 2 rather than COUNT so the query can short-circuit once the threshold is found.
             var query = new QueryDefinition(
-                "SELECT TOP 2 c.id FROM c WHERE c.location.name = @nodeName AND c._ts >= @cutoffTime")
-                .WithParameter("@nodeName", nodeName)
+                "SELECT TOP 2 c.id FROM c WHERE c.location.id = @locationId AND c.timestamp >= @cutoffTime")
+                .WithParameter("@locationId", locationId)
                 .WithParameter("@cutoffTime", cutoffTimestamp);
 
             int count = 0;
