@@ -11,7 +11,7 @@ Copy `NotificationFunction/local.settings.json.example` to `NotificationFunction
 | `AzureWebJobsStorage` | Yes | — | Azure Functions storage connection |
 | `FUNCTIONS_WORKER_RUNTIME` | Yes | `dotnet-isolated` | Azure Functions worker runtime |
 | `CosmosDbConnection` | Yes | — | Cosmos DB connection string |
-| `CosmosDbDatabase` | No | `detections` | Cosmos DB database name |
+| `CosmosDbDatabase` | No | `predictions` | Cosmos DB database name |
 | `CosmosDbContainer` | No | `metadata` | Cosmos DB container name |
 | `StorageConnection` | Yes | — | Azure Table Storage connection string |
 | `SenderEmail` | Yes | — | AWS SES sender address |
