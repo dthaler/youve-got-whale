@@ -174,8 +174,10 @@ namespace NotificationFunction
 
         private async Task<int> CountRecentDetectionsAsync(string nodeName, int periodMinutes)
         {
-            string databaseName = Environment.GetEnvironmentVariable("CosmosDbDatabase") ?? "detections";
-            string containerName = Environment.GetEnvironmentVariable("CosmosDbContainer") ?? "metadata";
+            string databaseName = Environment.GetEnvironmentVariable("CosmosDbDatabase")
+                ?? throw new InvalidOperationException("CosmosDbDatabase environment variable is not configured");
+            string containerName = Environment.GetEnvironmentVariable("CosmosDbContainer")
+                ?? throw new InvalidOperationException("CosmosDbContainer environment variable is not configured");
 
             Container container = _cosmosClient.GetContainer(databaseName, containerName);
             long cutoffTimestamp = DateTimeOffset.UtcNow.AddMinutes(-periodMinutes).ToUnixTimeSeconds();
