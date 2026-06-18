@@ -60,7 +60,7 @@ namespace NotificationFunction.Tests.Unit
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public async Task ProcessDocumentsAsync_SendsEmail_ForMatchingUnreviewedDetection()
+        public async Task ProcessDocumentsAsync_SendsEmail_ForDetection()
         {
             var sesMock = new Mock<IAmazonSimpleEmailService>();
             sesMock.Setup(x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default))
@@ -85,25 +85,10 @@ namespace NotificationFunction.Tests.Unit
                     It.Is<Amazon.SimpleEmail.Model.SendEmailRequest>(r =>
                         r.Source == SenderEmail &&
                         r.Destination.ToAddresses.Contains(RecipientEmail) &&
-                        r.Message.Subject.Data.Contains(NodeName)),
+                        r.Message.Body.Html.Data.Contains(NodeName)),
                     default),
                 Times.Once);
             stateMock.Verify(x => x.UpdateLastNotificationTimeAsync(LocationId), Times.Once);
-        }
-
-        [Fact]
-        public async Task ProcessDocumentsAsync_DoesNotSendEmail_WhenAllReviewed()
-        {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            var function = BuildFunction(sesMock);
-
-            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: true) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
-                NotificationPeriodMinutes, DetectionPeriodMinutes);
-
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Never);
         }
 
         [Fact]
@@ -261,7 +246,7 @@ namespace NotificationFunction.Tests.Unit
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public async Task ProcessDocumentsAsync_EmailSubjectContainsNodeName()
+        public async Task ProcessDocumentsAsync_EmailBodyContainsNodeName()
         {
             Amazon.SimpleEmail.Model.SendEmailRequest? capturedRequest = null;
             var sesMock = new Mock<IAmazonSimpleEmailService>();
@@ -285,7 +270,7 @@ namespace NotificationFunction.Tests.Unit
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
             Assert.NotNull(capturedRequest);
-            Assert.Contains(NodeName, capturedRequest!.Message.Subject.Data);
+            Assert.Contains(NodeName, capturedRequest!.Message.Body.Html.Data);
         }
 
         [Fact]

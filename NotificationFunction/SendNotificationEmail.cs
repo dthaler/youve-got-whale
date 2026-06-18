@@ -90,16 +90,12 @@ namespace NotificationFunction
             int notificationPeriodMinutes,
             int detectionPeriodMinutes)
         {
-            // Check if any triggered document matches LocationId and is an unreviewed detection.
+            // Check if any triggered document matches LocationId.
             string nodeName = string.Empty;
+            string comments = string.Empty;
             bool hasMatchingDetection = false;
             foreach (JsonElement doc in input)
             {
-                if (doc.TryGetProperty("reviewed", out JsonElement reviewed) &&
-                    reviewed.ValueKind == JsonValueKind.True)
-                {
-                    continue;
-                }
                 if (doc.TryGetProperty("location", out JsonElement location) &&
                     location.TryGetProperty("id", out JsonElement locationIdElement) &&
                     locationIdElement.GetString() == locationId)
@@ -108,6 +104,12 @@ namespace NotificationFunction
                     if (location.TryGetProperty("name", out JsonElement locationName))
                     {
                         nodeName = locationName.GetString() ?? locationId;
+                    }
+                    if (doc.TryGetProperty("comments", out JsonElement commentsElement))
+                    {
+                        comments = commentsElement.ValueKind == JsonValueKind.String
+                            ? commentsElement.GetString() ?? string.Empty
+                            : string.Empty;
                     }
                     break;
                 }
@@ -141,9 +143,17 @@ namespace NotificationFunction
                 return;
             }
 
+            string category = "Whale";
+            if (comments.StartsWith("AI: "))
+            {
+                string remainder = comments.Substring(4);
+                int spaceIndex = remainder.IndexOf(' ');
+                category = spaceIndex >= 0 ? remainder.Substring(0, spaceIndex) : remainder;
+            }
+
             // Send email notification.
-            string subject = $"Whale detection at {nodeName}";
-            string body = $"<p>A whale has been detected at <strong>{nodeName}</strong>.</p>" +
+            string subject = $"You've got whale!";
+            string body = $"<p>A {category} has been detected at <strong>{nodeName}</strong>.</p>" +
                           $"<p>There have been {recentDetectionCount} detections in the past {detectionPeriodMinutes} minutes.</p>" +
                           $"<p>Time: {DateTime.UtcNow:u}</p>";
 

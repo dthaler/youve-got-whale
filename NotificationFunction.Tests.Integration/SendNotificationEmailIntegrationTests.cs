@@ -25,6 +25,7 @@ namespace NotificationFunction.Tests.Integration
         private const string NodeName = "Orcasound Lab";
         private const string RecipientEmail = "recipient@example.com";
         private const string SenderEmail = "sender@example.com";
+        private const string Comments = "AI: resident and vessel";
         private const int NotificationPeriodMinutes = 60;
         private const int DetectionPeriodMinutes = 15;
 
@@ -32,11 +33,22 @@ namespace NotificationFunction.Tests.Integration
         // Helpers
         // ---------------------------------------------------------------------------
 
-        private static JsonElement MakeDetection(string locationId, string locationName, bool? reviewed = null)
+        private static JsonElement MakeDetection(string locationId, string locationName, string? comments, bool? reviewed = null)
         {
             object doc = reviewed.HasValue
-                ? new { reviewed = reviewed.Value, location = new { id = locationId, name = locationName } }
-                : (object)new { location = new { id = locationId, name = locationName } };
+                ? new {
+                    reviewed = reviewed.Value,
+                    comments = comments,
+                    location = new {
+                        id = locationId,
+                        name = locationName }
+                }
+                : (object)new {
+                    comments = comments,
+                    location = new {
+                        id = locationId,
+                        name = locationName }
+                };
             return JsonSerializer.SerializeToElement(doc);
         }
 
@@ -72,17 +84,17 @@ namespace NotificationFunction.Tests.Integration
         // ---------------------------------------------------------------------------
 
         /// <summary>
-        /// End-to-end: an unreviewed detection for the configured location triggers
-        /// an email with the correct sender, recipient, and subject.
+        /// End-to-end: a detection for the configured location triggers
+        /// an email with the correct sender, recipient, and body.
         /// </summary>
         [Fact]
-        public async Task ProcessDocumentsAsync_SendsEmail_ForUnreviewedDetection()
+        public async Task ProcessDocumentsAsync_SendsEmail_ForDetection()
         {
             var (function, sesMock, _, stateMock) = BuildFunction();
 
             var input = new List<JsonElement>
             {
-                MakeDetection(LocationId, NodeName, reviewed: false)
+                MakeDetection(LocationId, NodeName, Comments)
             };
 
             await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
@@ -93,7 +105,7 @@ namespace NotificationFunction.Tests.Integration
                     It.Is<SendEmailRequest>(r =>
                         r.Source == SenderEmail &&
                         r.Destination.ToAddresses.Contains(RecipientEmail) &&
-                        r.Message.Subject.Data.Contains(NodeName)),
+                        r.Message.Body.Html.Data.Contains(NodeName)),
                     It.IsAny<CancellationToken>()),
                 Times.Once);
 
@@ -109,7 +121,7 @@ namespace NotificationFunction.Tests.Integration
             var (function, sesMock, _, _) = BuildFunction();
 
             // No "reviewed" property in the document.
-            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName) };
+            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, Comments) };
 
             await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
@@ -117,31 +129,6 @@ namespace NotificationFunction.Tests.Integration
             sesMock.Verify(
                 x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), It.IsAny<CancellationToken>()),
                 Times.Once);
-        }
-
-        // ---------------------------------------------------------------------------
-        // Tests: suppression – reviewed documents
-        // ---------------------------------------------------------------------------
-
-        /// <summary>
-        /// All documents are reviewed; no email should be sent.
-        /// </summary>
-        [Fact]
-        public async Task ProcessDocumentsAsync_DoesNotSendEmail_WhenAllReviewed()
-        {
-            var (function, sesMock, _, _) = BuildFunction();
-
-            var input = new List<JsonElement>
-            {
-                MakeDetection(LocationId, NodeName, reviewed: true)
-            };
-
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
-                NotificationPeriodMinutes, DetectionPeriodMinutes);
-
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), It.IsAny<CancellationToken>()),
-                Times.Never);
         }
 
         // ---------------------------------------------------------------------------
@@ -157,7 +144,7 @@ namespace NotificationFunction.Tests.Integration
             // Last notification 10 minutes ago; period is 60 minutes.
             var (function, sesMock, _, _) = BuildFunction(lastNotificationTime: DateTime.UtcNow.AddMinutes(-10));
 
-            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
+            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, Comments, reviewed: false) };
 
             await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
@@ -176,7 +163,7 @@ namespace NotificationFunction.Tests.Integration
             // Last notification 90 minutes ago; period is 60 minutes.
             var (function, sesMock, _, _) = BuildFunction(lastNotificationTime: DateTime.UtcNow.AddMinutes(-90));
 
-            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
+            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, Comments, reviewed: false) };
 
             await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
@@ -198,7 +185,7 @@ namespace NotificationFunction.Tests.Integration
         {
             var (function, sesMock, _, _) = BuildFunction(recentDetections: 1);
 
-            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
+            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, Comments, reviewed: false) };
 
             await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
@@ -236,7 +223,7 @@ namespace NotificationFunction.Tests.Integration
             var function = new SendNotificationEmail(
                 loggerMock.Object, sesMock.Object, detectionCounterMock.Object, stateMock.Object);
 
-            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
+            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, Comments, reviewed: false) };
             await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
@@ -244,6 +231,7 @@ namespace NotificationFunction.Tests.Integration
             string body = capturedRequest!.Message.Body.Html.Data;
             Assert.Contains(NodeName, body);
             Assert.Contains("4", body);
+            Assert.Contains("resident", body);
             Assert.Contains("UTF-8", capturedRequest.Message.Body.Html.Charset);
         }
     }
