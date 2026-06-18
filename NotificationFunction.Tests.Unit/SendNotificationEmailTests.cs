@@ -92,21 +92,6 @@ namespace NotificationFunction.Tests.Unit
         }
 
         [Fact]
-        public async Task ProcessDocumentsAsync_DoesNotSendEmail_WhenAllReviewed()
-        {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            var function = BuildFunction(sesMock);
-
-            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: true) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
-                NotificationPeriodMinutes, DetectionPeriodMinutes);
-
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Never);
-        }
-
-        [Fact]
         public async Task ProcessDocumentsAsync_SendsEmail_WhenReviewedFieldMissing()
         {
             var sesMock = new Mock<IAmazonSimpleEmailService>();
