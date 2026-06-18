@@ -66,11 +66,11 @@ jobs:
       - name: Integration Tests
         run: dotnet test NotificationFunction.Tests.Integration --no-build -c Release
       - name: Publish
-        run: dotnet publish ${{ env.WORKING_DIR }}/NotificationFunction.csproj --no-build -c Release -o ./${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
+        run: dotnet publish ${{ env.WORKING_DIR }}/NotificationFunction.csproj --no-build -c Release -o ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
       - name: Cache published artifacts
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
-          path: ./${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
+          path: ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
           key: ${{ github.sha }}-notificationfunction-artifacts
 
   test-windows:
@@ -114,11 +114,12 @@ jobs:
       - name: Restore published artifacts
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
-          path: ./${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
+          path: ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
           key: ${{ github.sha }}-notificationfunction-artifacts
+          fail-on-cache-miss: true
       - name: Deploy to Azure Functions
         uses: azure/functions-action@bc63708cc6539760eea18d8a7de4ce8ef5fdf593  # v1.5.6
         with:
           app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME || github.event.repository.name }}
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-          package: ./${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
+          package: ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
