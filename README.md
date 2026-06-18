@@ -27,3 +27,9 @@ Copy `NotificationFunction/local.settings.json.example` to `NotificationFunction
 cd NotificationFunction
 dotnet build
 ```
+
+## Test
+
+```sh
+dotnet test NotificationFunction.sln
+```

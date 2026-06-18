@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace NotificationFunction
 {
-    public class NotificationStateStore : IDisposable
+    public class NotificationStateStore : INotificationStateStore, IDisposable
     {
         private readonly CosmosClient _cosmosClient;
         private readonly string _databaseName;

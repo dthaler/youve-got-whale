@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
-using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using System;
@@ -15,18 +14,18 @@ namespace NotificationFunction
     {
         private readonly ILogger _logger;
         private readonly IAmazonSimpleEmailService _sesClient;
-        private readonly CosmosClient _cosmosClient;
-        private readonly NotificationStateStore _notificationStateStore;
+        private readonly IDetectionCounter _detectionCounter;
+        private readonly INotificationStateStore _notificationStateStore;
 
         public SendNotificationEmail(
             ILogger<SendNotificationEmail> logger,
             IAmazonSimpleEmailService sesClient,
-            CosmosClient cosmosClient,
-            NotificationStateStore notificationStateStore)
+            IDetectionCounter detectionCounter,
+            INotificationStateStore notificationStateStore)
         {
             _logger = logger;
             _sesClient = sesClient;
-            _cosmosClient = cosmosClient;
+            _detectionCounter = detectionCounter;
             _notificationStateStore = notificationStateStore;
         }
 
@@ -48,7 +47,6 @@ namespace NotificationFunction
             string? locationId = Environment.GetEnvironmentVariable("LocationId");
             string? recipientEmail = Environment.GetEnvironmentVariable("RecipientEmail");
             string? senderEmail = Environment.GetEnvironmentVariable("SenderEmail");
-            string nodeName = string.Empty;
 
             if (string.IsNullOrEmpty(locationId))
             {
@@ -73,7 +71,27 @@ namespace NotificationFunction
             int detectionPeriodMinutes = int.TryParse(
                 Environment.GetEnvironmentVariable("DetectionPeriodMinutes"), out int dp) ? dp : 15;
 
+            await ProcessDocumentsAsync(
+                input, locationId, recipientEmail, senderEmail,
+                notificationPeriodMinutes, detectionPeriodMinutes);
+        }
+
+        /// <summary>
+        /// Core notification logic, factored out of Run for testability.
+        /// Inspects <paramref name="input"/> for an unreviewed detection matching
+        /// <paramref name="locationId"/>, enforces rate-limiting and a minimum
+        /// cluster size, then sends an email when all conditions are satisfied.
+        /// </summary>
+        public async Task ProcessDocumentsAsync(
+            IReadOnlyList<JsonElement> input,
+            string locationId,
+            string recipientEmail,
+            string senderEmail,
+            int notificationPeriodMinutes,
+            int detectionPeriodMinutes)
+        {
             // Check if any triggered document matches LocationId and is an unreviewed detection.
+            string nodeName = string.Empty;
             bool hasMatchingDetection = false;
             foreach (JsonElement doc in input)
             {
@@ -89,7 +107,7 @@ namespace NotificationFunction
                     hasMatchingDetection = true;
                     if (location.TryGetProperty("name", out JsonElement locationName))
                     {
-                        nodeName = locationName.GetString() ?? locationId;   
+                        nodeName = locationName.GetString() ?? locationId;
                     }
                     break;
                 }
@@ -114,7 +132,7 @@ namespace NotificationFunction
             }
 
             // Check if at least one other detection from LocationId occurred in past DetectionPeriodMinutes.
-            int recentDetectionCount = await CountRecentDetectionsAsync(locationId, detectionPeriodMinutes);
+            int recentDetectionCount = await _detectionCounter.CountRecentAsync(locationId, detectionPeriodMinutes);
             if (recentDetectionCount < 2)
             {
                 _logger.LogInformation(
@@ -150,32 +168,6 @@ namespace NotificationFunction
 
             // Update last notification time.
             await _notificationStateStore.UpdateLastNotificationTimeAsync(locationId);
-        }
-
-        private async Task<int> CountRecentDetectionsAsync(string locationId, int periodMinutes)
-        {
-            string databaseName = Environment.GetEnvironmentVariable("CosmosDbDatabase")
-                ?? throw new InvalidOperationException("CosmosDbDatabase environment variable is not configured");
-            string containerName = Environment.GetEnvironmentVariable("CosmosDbContainer")
-                ?? throw new InvalidOperationException("CosmosDbContainer environment variable is not configured");
-
-            Container container = _cosmosClient.GetContainer(databaseName, containerName);
-            long cutoffTimestamp = DateTimeOffset.UtcNow.AddMinutes(-periodMinutes).ToUnixTimeSeconds();
-
-            // Use TOP 2 rather than COUNT so the query can short-circuit once the threshold is found.
-            var query = new QueryDefinition(
-                "SELECT TOP 2 c.id FROM c WHERE c.location.id = @locationId AND c.timestamp >= @cutoffTime")
-                .WithParameter("@locationId", locationId)
-                .WithParameter("@cutoffTime", cutoffTimestamp);
-
-            int count = 0;
-            using FeedIterator<JsonElement> iterator = container.GetItemQueryIterator<JsonElement>(query);
-            while (iterator.HasMoreResults && count < 2)
-            {
-                FeedResponse<JsonElement> results = await iterator.ReadNextAsync();
-                count += results.Count;
-            }
-            return count;
         }
     }
 }
