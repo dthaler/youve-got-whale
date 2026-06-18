@@ -105,9 +105,11 @@ namespace NotificationFunction
                     {
                         nodeName = locationName.GetString() ?? locationId;
                     }
-                    if (doc.TryGetProperty("comments", out JsonElement commentsString))
+                    if (doc.TryGetProperty("comments", out JsonElement commentsElement))
                     {
-                        comments = commentsString.GetString() ?? string.Empty;
+                        comments = commentsElement.ValueKind == JsonValueKind.String
+                            ? commentsElement.GetString() ?? string.Empty
+                            : string.Empty;
                     }
                     break;
                 }

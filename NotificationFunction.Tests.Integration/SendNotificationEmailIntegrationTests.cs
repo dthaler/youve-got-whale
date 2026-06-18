@@ -85,7 +85,7 @@ namespace NotificationFunction.Tests.Integration
 
         /// <summary>
         /// End-to-end: a detection for the configured location triggers
-        /// an email with the correct sender, recipient, and subject.
+        /// an email with the correct sender, recipient, and body.
         /// </summary>
         [Fact]
         public async Task ProcessDocumentsAsync_SendsEmail_ForDetection()
@@ -231,6 +231,7 @@ namespace NotificationFunction.Tests.Integration
             string body = capturedRequest!.Message.Body.Html.Data;
             Assert.Contains(NodeName, body);
             Assert.Contains("4", body);
+            Assert.Contains("resident", body);
             Assert.Contains("UTF-8", capturedRequest.Message.Body.Html.Charset);
         }
     }
