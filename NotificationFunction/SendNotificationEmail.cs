@@ -90,7 +90,7 @@ namespace NotificationFunction
             int notificationPeriodMinutes,
             int detectionPeriodMinutes)
         {
-            // Check if any triggered document matches LocationId and is an unreviewed detection.
+            // Check if any triggered document matches LocationId.
             string nodeName = string.Empty;
             string comments = string.Empty;
             bool hasMatchingDetection = false;
