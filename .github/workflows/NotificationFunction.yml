@@ -118,7 +118,7 @@ jobs:
           name: notificationfunction-publish
           path: ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
