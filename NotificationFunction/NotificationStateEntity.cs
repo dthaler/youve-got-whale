@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-using System;
 using System.Text.Json.Serialization;
 
 namespace NotificationFunction
