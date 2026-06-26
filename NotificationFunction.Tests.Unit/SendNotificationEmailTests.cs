@@ -383,9 +383,9 @@ namespace NotificationFunction.Tests.Unit
             await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            // Assert - verify the state store was called
+            // Assert - verify the email was sent and the state store was updated
+            sesMock.Verify(x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), default), Times.Once);
             stateMock.Verify(x => x.UpdateLastNotificationTimeAsync(LocationId), Times.Once);
-
             // (Removed redundant assertions: the return value here is controlled by the mock setup above.)
         }
     }
