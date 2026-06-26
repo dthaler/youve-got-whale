@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-using System;
 using System.Text.Json.Serialization;
 
 namespace NotificationFunction
@@ -10,6 +9,6 @@ namespace NotificationFunction
         public string Id { get; set; } = string.Empty;
 
         [JsonPropertyName("lastNotificationTime")]
-        public DateTime LastNotificationTime { get; set; }
+        public string LastNotificationTime { get; set; } = string.Empty;
     }
 }

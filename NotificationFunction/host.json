@@ -1,6 +1,11 @@
 {
     "version": "2.0",
     "logging": {
+        "logLevel": {
+          "Host.FunctionMetadataProvider": "Debug",
+          "Host.Startup": "Debug",
+          "Worker": "Debug"
+        },
         "applicationInsights": {
             "samplingSettings": {
                 "isEnabled": true,

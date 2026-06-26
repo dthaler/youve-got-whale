@@ -356,5 +356,37 @@ namespace NotificationFunction.Tests.Unit
                 x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
                 Times.Never);
         }
+
+        [Fact]
+        public async Task ProcessDocumentsAsync_UpdatesLastNotificationTime_WhenEmailSent()
+        {
+            // Arrange
+            var stateMock = new Mock<INotificationStateStore>();
+            var testTime = new DateTime(2026, 1, 25, 7, 12, 0, DateTimeKind.Utc);
+            stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
+                     .ReturnsAsync(testTime);
+            stateMock.Setup(x => x.UpdateLastNotificationTimeAsync(It.IsAny<string>()))
+                     .Returns(Task.CompletedTask);
+
+            var sesMock = new Mock<IAmazonSimpleEmailService>();
+            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), default))
+                   .ReturnsAsync(new SendEmailResponse());
+
+            var detectionCounterMock = new Mock<IDetectionCounter>();
+            detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
+                                 .ReturnsAsync(2);
+
+            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+
+            // Act
+            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
+            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+                NotificationPeriodMinutes, DetectionPeriodMinutes);
+
+            // Assert - verify the email was sent and the state store was updated
+            sesMock.Verify(x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), default), Times.Once);
+            stateMock.Verify(x => x.UpdateLastNotificationTimeAsync(LocationId), Times.Once);
+            // (Removed redundant assertions: the return value here is controlled by the mock setup above.)
+        }
     }
 }

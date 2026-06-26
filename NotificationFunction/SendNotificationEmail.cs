@@ -171,10 +171,10 @@ namespace NotificationFunction
                 }
             };
 
-            await _sesClient.SendEmailAsync(emailRequest);
+            SendEmailResponse response = await _sesClient.SendEmailAsync(emailRequest);
             _logger.LogInformation(
-                "Sent notification email for {NodeName}",
-                nodeName);
+                "Sent notification email for {NodeName}: {StatusCode}",
+                nodeName, response.HttpStatusCode);
 
             // Update last notification time.
             await _notificationStateStore.UpdateLastNotificationTimeAsync(locationId);
