@@ -23,7 +23,7 @@ namespace NotificationFunction
                 ?? throw new InvalidOperationException("CosmosDbContainer environment variable is not configured");
 
             Container container = _cosmosClient.GetContainer(databaseName, containerName);
-            string cutoffIso = DateTimeOffset.UtcNow.AddMinutes(-periodMinutes).ToString("o");
+            string cutoffIso = DateTime.UtcNow.AddMinutes(-periodMinutes).ToString("o", System.Globalization.CultureInfo.InvariantCulture);
 
             // Use TOP 2 rather than COUNT so the query can short-circuit once the threshold is found.
             var query = new QueryDefinition(

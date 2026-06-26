@@ -38,7 +38,7 @@ namespace NotificationFunction
                 ItemResponse<NotificationStateEntity> response =
                     await container.ReadItemAsync<NotificationStateEntity>(locationId, new PartitionKey(locationId));
 
-                if (DateTime.TryParse(response.Resource.LastNotificationTime, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime result))
+                if (DateTime.TryParse(response.Resource.LastNotificationTime, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime result))
                 {
                     return result;
                 }
@@ -56,10 +56,10 @@ namespace NotificationFunction
             var entity = new NotificationStateEntity
             {
                 Id = locationId,
-                LastNotificationTime = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                LastNotificationTime = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture)
             };
 
-            ItemResponse<NotificationStateEntity> upsertResponse = await container.UpsertItemAsync(entity, new PartitionKey(locationId));
+            await container.UpsertItemAsync(entity, new PartitionKey(locationId));
         }
 
         public void Dispose()

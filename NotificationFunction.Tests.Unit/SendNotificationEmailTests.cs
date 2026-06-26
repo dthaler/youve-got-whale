@@ -358,7 +358,7 @@ namespace NotificationFunction.Tests.Unit
         }
 
         [Fact]
-        public async Task NotificationStateStore_SerializesDateTimeAsIso8601String()
+        public async Task ProcessDocumentsAsync_UpdatesLastNotificationTime_WhenEmailSent()
         {
             // Arrange
             var stateMock = new Mock<INotificationStateStore>();
@@ -386,10 +386,7 @@ namespace NotificationFunction.Tests.Unit
             // Assert - verify the state store was called
             stateMock.Verify(x => x.UpdateLastNotificationTimeAsync(LocationId), Times.Once);
 
-            // Verify rate limiting would work with the returned time
-            var lastTime = await stateMock.Object.GetLastNotificationTimeAsync(LocationId);
-            Assert.NotNull(lastTime);
-            Assert.Equal(testTime, lastTime.Value);
+            // (Removed redundant assertions: the return value here is controlled by the mock setup above.)
         }
     }
 }
