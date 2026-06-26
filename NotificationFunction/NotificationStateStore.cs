@@ -2,6 +2,7 @@
 using Microsoft.Azure.Cosmos;
 using System;
 using System.Net;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace NotificationFunction
@@ -16,7 +17,14 @@ namespace NotificationFunction
 
         public NotificationStateStore(string connectionString, string databaseName, string containerName)
         {
-            _cosmosClient = new CosmosClient(connectionString);
+            var options = new CosmosClientOptions
+            {
+                Serializer = new CosmosSystemTextJsonSerializer(new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                })
+            };
+            _cosmosClient = new CosmosClient(connectionString, options);
             _databaseName = databaseName;
             _containerName = containerName;
         }
@@ -30,9 +38,9 @@ namespace NotificationFunction
                 ItemResponse<NotificationStateEntity> response =
                     await container.ReadItemAsync<NotificationStateEntity>(locationId, new PartitionKey(locationId));
 
-                if (DateTime.TryParse(response.Resource.LastNotificationTime, out DateTime result))
+                if (DateTime.TryParse(response.Resource.LastNotificationTime, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime result))
                 {
-                    return DateTime.SpecifyKind(result, DateTimeKind.Utc);
+                    return result;
                 }
                 return null;
             }
@@ -51,7 +59,7 @@ namespace NotificationFunction
                 LastNotificationTime = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
             };
 
-            await container.UpsertItemAsync(entity, new PartitionKey(locationId));
+            ItemResponse<NotificationStateEntity> upsertResponse = await container.UpsertItemAsync(entity, new PartitionKey(locationId));
         }
 
         public void Dispose()
@@ -74,6 +82,37 @@ namespace NotificationFunction
             ContainerResponse container = await database.Database.CreateContainerIfNotExistsAsync(
                 new ContainerProperties(_containerName, "/id"));
             return container.Container;
+        }
+    }
+
+    internal class CosmosSystemTextJsonSerializer : CosmosSerializer
+    {
+        private readonly JsonSerializerOptions _options;
+
+        public CosmosSystemTextJsonSerializer(JsonSerializerOptions options)
+        {
+            _options = options;
+        }
+
+        public override T FromStream<T>(System.IO.Stream stream)
+        {
+            using (stream)
+            {
+                if (stream.CanSeek && stream.Length == 0)
+                {
+                    return default!;
+                }
+
+                return JsonSerializer.Deserialize<T>(stream, _options)!;
+            }
+        }
+
+        public override System.IO.Stream ToStream<T>(T input)
+        {
+            var stream = new System.IO.MemoryStream();
+            JsonSerializer.Serialize(stream, input, _options);
+            stream.Position = 0;
+            return stream;
         }
     }
 }
