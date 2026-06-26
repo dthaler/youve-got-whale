@@ -153,6 +153,9 @@ namespace NotificationFunction
 
             // Send email notification.
             string subject = $"You've got whale!";
+            string textBody = $"A {category} has been detected at {nodeName}.\n" +
+                              $"There have been {recentDetectionCount} detections in the past {detectionPeriodMinutes} minutes.\n" +
+                              $"Time: {DateTime.UtcNow:u}\n";
             string body = $"<p>A {category} has been detected at <strong>{nodeName}</strong>.</p>" +
                           $"<p>There have been {recentDetectionCount} detections in the past {detectionPeriodMinutes} minutes.</p>" +
                           $"<p>Time: {DateTime.UtcNow:u}</p>";
@@ -166,6 +169,7 @@ namespace NotificationFunction
                     Subject = new Content(subject),
                     Body = new Body
                     {
+                        Text = new Content { Charset = "UTF-8", Data = textBody },
                         Html = new Content { Charset = "UTF-8", Data = body }
                     }
                 }

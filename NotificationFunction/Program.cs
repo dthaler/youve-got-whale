@@ -36,6 +36,7 @@ var host = new HostBuilder()
                 GetRequiredEnvironmentVariable("NotificationCosmosDbConnection"),
                 Environment.GetEnvironmentVariable("NotificationCosmosDbDatabase") ?? "orcasound-cosmosdb",
                 Environment.GetEnvironmentVariable("NotificationCosmosDbContainer") ?? "Notifications"));
+        services.AddSingleton<SendNotificationEmail>();
     })
     .Build();
 
