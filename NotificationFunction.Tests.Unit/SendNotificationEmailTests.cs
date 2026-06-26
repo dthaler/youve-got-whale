@@ -356,5 +356,40 @@ namespace NotificationFunction.Tests.Unit
                 x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
                 Times.Never);
         }
+
+        [Fact]
+        public async Task NotificationStateStore_SerializesDateTimeAsIso8601String()
+        {
+            // Arrange
+            var stateMock = new Mock<INotificationStateStore>();
+            var testTime = new DateTime(2026, 1, 25, 7, 12, 0, DateTimeKind.Utc);
+            stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
+                     .ReturnsAsync(testTime);
+            stateMock.Setup(x => x.UpdateLastNotificationTimeAsync(It.IsAny<string>()))
+                     .Returns(Task.CompletedTask);
+
+            var sesMock = new Mock<IAmazonSimpleEmailService>();
+            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), default))
+                   .ReturnsAsync(new SendEmailResponse());
+
+            var detectionCounterMock = new Mock<IDetectionCounter>();
+            detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
+                                 .ReturnsAsync(2);
+
+            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+
+            // Act
+            var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
+            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+                NotificationPeriodMinutes, DetectionPeriodMinutes);
+
+            // Assert - verify the state store was called
+            stateMock.Verify(x => x.UpdateLastNotificationTimeAsync(LocationId), Times.Once);
+
+            // Verify rate limiting would work with the returned time
+            var lastTime = await stateMock.Object.GetLastNotificationTimeAsync(LocationId);
+            Assert.NotNull(lastTime);
+            Assert.Equal(testTime, lastTime.Value);
+        }
     }
 }

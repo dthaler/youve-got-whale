@@ -23,13 +23,13 @@ namespace NotificationFunction
                 ?? throw new InvalidOperationException("CosmosDbContainer environment variable is not configured");
 
             Container container = _cosmosClient.GetContainer(databaseName, containerName);
-            long cutoffTimestamp = DateTimeOffset.UtcNow.AddMinutes(-periodMinutes).ToUnixTimeSeconds();
+            string cutoffIso = DateTimeOffset.UtcNow.AddMinutes(-periodMinutes).ToString("o");
 
             // Use TOP 2 rather than COUNT so the query can short-circuit once the threshold is found.
             var query = new QueryDefinition(
-                "SELECT TOP 2 c.id FROM c WHERE c.location.id = @locationId AND c.timestamp >= @cutoffTime")
+                "SELECT TOP 2 c.id FROM c WHERE c.location.id = @locationId AND c.timestamp >= @cutoffIso")
                 .WithParameter("@locationId", locationId)
-                .WithParameter("@cutoffTime", cutoffTimestamp);
+                .WithParameter("@cutoffIso", cutoffIso);
 
             int count = 0;
             using FeedIterator<JsonElement> iterator = container.GetItemQueryIterator<JsonElement>(query);

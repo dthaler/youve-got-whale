@@ -29,7 +29,12 @@ namespace NotificationFunction
             {
                 ItemResponse<NotificationStateEntity> response =
                     await container.ReadItemAsync<NotificationStateEntity>(locationId, new PartitionKey(locationId));
-                return response.Resource.LastNotificationTime;
+
+                if (DateTime.TryParse(response.Resource.LastNotificationTime, out DateTime result))
+                {
+                    return DateTime.SpecifyKind(result, DateTimeKind.Utc);
+                }
+                return null;
             }
             catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
@@ -43,7 +48,7 @@ namespace NotificationFunction
             var entity = new NotificationStateEntity
             {
                 Id = locationId,
-                LastNotificationTime = DateTime.UtcNow
+                LastNotificationTime = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
             };
 
             await container.UpsertItemAsync(entity, new PartitionKey(locationId));
