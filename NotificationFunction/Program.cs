@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: MIT
-using Amazon;
-using Amazon.SimpleEmail;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -23,12 +21,7 @@ var host = new HostBuilder()
     .ConfigureServices(services =>
     {
         services.AddLogging();
-        services.AddSingleton<IAmazonSimpleEmailService>(_ =>
-        {
-            string regionName = Environment.GetEnvironmentVariable("AwsRegion") ?? "us-west-2";
-            var region = RegionEndpoint.GetBySystemName(regionName);
-            return new AmazonSimpleEmailServiceClient(region);
-        });
+        services.AddHttpClient();
         services.AddSingleton<CosmosClient>(_ => new CosmosClient(GetRequiredEnvironmentVariable("CosmosDbConnection")));
         services.AddSingleton<IDetectionCounter, CosmosDetectionCounter>();
         services.AddSingleton<INotificationStateStore>(_ =>
@@ -36,7 +29,7 @@ var host = new HostBuilder()
                 GetRequiredEnvironmentVariable("NotificationCosmosDbConnection"),
                 Environment.GetEnvironmentVariable("NotificationCosmosDbDatabase") ?? "orcasound-cosmosdb",
                 Environment.GetEnvironmentVariable("NotificationCosmosDbContainer") ?? "Notifications"));
-        services.AddSingleton<SendNotificationEmail>();
+        services.AddSingleton<SendNotification>();
     })
     .Build();
 

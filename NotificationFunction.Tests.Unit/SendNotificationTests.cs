@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
-using Amazon.SimpleEmail;
-using Amazon.SimpleEmail.Model;
 using Moq;
+using Moq.Protected;
 using NotificationFunction;
 using System;
 using System.Collections.Generic;
+using System.Net;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,16 +14,15 @@ namespace NotificationFunction.Tests.Unit
 {
     /// <summary>
     /// Unit tests for the document-matching and notification-suppression logic in
-    /// <see cref="SendNotificationEmail.ProcessDocumentsAsync"/>.
-    /// All external dependencies (SES, detection counter, state store) are mocked so
+    /// <see cref="SendNotification.ProcessDocumentsAsync"/>.
+    /// All external dependencies (HttpClient, detection counter, state store) are mocked so
     /// these tests run without any network or cloud connections.
     /// </summary>
-    public class SendNotificationEmailTests
+    public class SendNotificationTests
     {
         private const string LocationId = "rpi_orcasound_lab";
         private const string NodeName = "Orcasound Lab";
-        private const string RecipientEmail = "recipient@example.com";
-        private const string SenderEmail = "sender@example.com";
+        private const string AppNotificationUrl = "https://maker.ifttt.com/trigger/youve-got-whale/json/with/key/testkey";
         private const int NotificationPeriodMinutes = 60;
         private const int DetectionPeriodMinutes = 15;
 
@@ -38,21 +38,39 @@ namespace NotificationFunction.Tests.Unit
             return JsonSerializer.SerializeToElement(doc);
         }
 
-        private static SendNotificationEmail BuildFunction(
-            Mock<IAmazonSimpleEmailService>? sesMock = null,
-            Mock<IDetectionCounter>? detectionCounterMock = null,
-            Mock<INotificationStateStore>? stateMock = null)
+        private static (SendNotification function, Mock<HttpMessageHandler> handlerMock)
+            BuildFunction(
+                Mock<HttpMessageHandler>? handlerMock = null,
+                Mock<IDetectionCounter>? detectionCounterMock = null,
+                Mock<INotificationStateStore>? stateMock = null)
         {
-            sesMock ??= new Mock<IAmazonSimpleEmailService>();
+            bool newHandler = handlerMock == null;
+            handlerMock ??= new Mock<HttpMessageHandler>();
+
+            if (newHandler)
+            {
+                handlerMock.Protected()
+                    .Setup<Task<HttpResponseMessage>>("SendAsync",
+                        ItExpr.IsAny<HttpRequestMessage>(),
+                        ItExpr.IsAny<CancellationToken>())
+                    .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
+            }
+
             detectionCounterMock ??= new Mock<IDetectionCounter>();
             stateMock ??= new Mock<INotificationStateStore>();
 
-            var loggerMock = new Mock<Microsoft.Extensions.Logging.ILogger<SendNotificationEmail>>();
-            return new SendNotificationEmail(
+            var httpClient = new HttpClient(handlerMock.Object);
+            var factoryMock = new Mock<IHttpClientFactory>();
+            factoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+            var loggerMock = new Mock<Microsoft.Extensions.Logging.ILogger<SendNotification>>();
+            var function = new SendNotification(
                 loggerMock.Object,
-                sesMock.Object,
+                factoryMock.Object,
                 detectionCounterMock.Object,
                 stateMock.Object);
+
+            return (function, handlerMock);
         }
 
         // ---------------------------------------------------------------------------
@@ -60,11 +78,14 @@ namespace NotificationFunction.Tests.Unit
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public async Task ProcessDocumentsAsync_SendsEmail_ForDetection()
+        public async Task ProcessDocumentsAsync_SendsNotification_ForDetection()
         {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default))
-                   .ReturnsAsync(new Amazon.SimpleEmail.Model.SendEmailResponse());
+            var handlerMock = new Mock<HttpMessageHandler>();
+            handlerMock.Protected()
+                .Setup<Task<HttpResponseMessage>>("SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
 
             var detectionCounterMock = new Mock<IDetectionCounter>();
             detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
@@ -74,30 +95,26 @@ namespace NotificationFunction.Tests.Unit
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
                      .ReturnsAsync((DateTime?)null);
 
-            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+            var (function, _) = BuildFunction(handlerMock, detectionCounterMock, stateMock);
 
             var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            sesMock.Verify(
-                x => x.SendEmailAsync(
-                    It.Is<Amazon.SimpleEmail.Model.SendEmailRequest>(r =>
-                        r.Source == SenderEmail &&
-                        r.Destination.ToAddresses.Contains(RecipientEmail) &&
-                        r.Message.Body.Html.Data.Contains(NodeName)),
-                    default),
-                Times.Once);
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Once(),
+                ItExpr.Is<HttpRequestMessage>(r =>
+                    r.Method == HttpMethod.Post &&
+                    r.RequestUri != null &&
+                    r.RequestUri.ToString() == AppNotificationUrl),
+                ItExpr.IsAny<CancellationToken>());
             stateMock.Verify(x => x.UpdateLastNotificationTimeAsync(LocationId), Times.Once);
         }
 
         [Fact]
-        public async Task ProcessDocumentsAsync_SendsEmail_WhenReviewedFieldMissing()
+        public async Task ProcessDocumentsAsync_SendsNotification_WhenReviewedFieldMissing()
         {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default))
-                   .ReturnsAsync(new Amazon.SimpleEmail.Model.SendEmailResponse());
-
             var detectionCounterMock = new Mock<IDetectionCounter>();
             detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
                                  .ReturnsAsync(2);
@@ -106,32 +123,35 @@ namespace NotificationFunction.Tests.Unit
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
                      .ReturnsAsync((DateTime?)null);
 
-            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+            var (function, handlerMock) = BuildFunction(detectionCounterMock: detectionCounterMock, stateMock: stateMock);
 
             // Document has no "reviewed" field – should be treated as unreviewed.
             var input = new List<JsonElement> { MakeDetection(LocationId, NodeName) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Once);
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Once(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
         }
 
         [Fact]
-        public async Task ProcessDocumentsAsync_DoesNotSendEmail_WhenNoMatchingLocation()
+        public async Task ProcessDocumentsAsync_DoesNotSendNotification_WhenNoMatchingLocation()
         {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            var function = BuildFunction(sesMock);
+            var (function, handlerMock) = BuildFunction();
 
             // Document belongs to a different location.
             var input = new List<JsonElement> { MakeDetection("rpi_other_location", "Other Location") };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Never);
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Never(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
         }
 
         // ---------------------------------------------------------------------------
@@ -139,33 +159,29 @@ namespace NotificationFunction.Tests.Unit
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public async Task ProcessDocumentsAsync_DoesNotSendEmail_WhenRateLimited()
+        public async Task ProcessDocumentsAsync_DoesNotSendNotification_WhenRateLimited()
         {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-
             var stateMock = new Mock<INotificationStateStore>();
             // Last notification was 10 minutes ago; limit is 60 minutes.
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
                      .ReturnsAsync(DateTime.UtcNow.AddMinutes(-10));
 
-            var function = BuildFunction(sesMock, stateMock: stateMock);
+            var (function, handlerMock) = BuildFunction(stateMock: stateMock);
 
             var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Never);
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Never(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
         }
 
         [Fact]
-        public async Task ProcessDocumentsAsync_SendsEmail_WhenRateLimitHasExpired()
+        public async Task ProcessDocumentsAsync_SendsNotification_WhenRateLimitHasExpired()
         {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default))
-                   .ReturnsAsync(new Amazon.SimpleEmail.Model.SendEmailResponse());
-
             var detectionCounterMock = new Mock<IDetectionCounter>();
             detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
                                  .ReturnsAsync(2);
@@ -175,15 +191,17 @@ namespace NotificationFunction.Tests.Unit
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
                      .ReturnsAsync(DateTime.UtcNow.AddMinutes(-90));
 
-            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+            var (function, handlerMock) = BuildFunction(detectionCounterMock: detectionCounterMock, stateMock: stateMock);
 
             var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Once);
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Once(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
         }
 
         // ---------------------------------------------------------------------------
@@ -191,10 +209,8 @@ namespace NotificationFunction.Tests.Unit
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public async Task ProcessDocumentsAsync_DoesNotSendEmail_WhenInsufficientRecentDetections()
+        public async Task ProcessDocumentsAsync_DoesNotSendNotification_WhenInsufficientRecentDetections()
         {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-
             var detectionCounterMock = new Mock<IDetectionCounter>();
             // Only 1 recent detection – threshold requires at least 2.
             detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
@@ -204,24 +220,22 @@ namespace NotificationFunction.Tests.Unit
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
                      .ReturnsAsync((DateTime?)null);
 
-            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+            var (function, handlerMock) = BuildFunction(detectionCounterMock: detectionCounterMock, stateMock: stateMock);
 
             var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Never);
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Never(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
         }
 
         [Fact]
-        public async Task ProcessDocumentsAsync_SendsEmail_WhenDetectionCountMeetsThreshold()
+        public async Task ProcessDocumentsAsync_SendsNotification_WhenDetectionCountMeetsThreshold()
         {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default))
-                   .ReturnsAsync(new Amazon.SimpleEmail.Model.SendEmailResponse());
-
             var detectionCounterMock = new Mock<IDetectionCounter>();
             detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
                                  .ReturnsAsync(2);
@@ -230,30 +244,34 @@ namespace NotificationFunction.Tests.Unit
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
                      .ReturnsAsync((DateTime?)null);
 
-            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+            var (function, handlerMock) = BuildFunction(detectionCounterMock: detectionCounterMock, stateMock: stateMock);
 
             var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Once);
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Once(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
         }
 
         // ---------------------------------------------------------------------------
-        // Tests: email content
+        // Tests: notification payload content
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public async Task ProcessDocumentsAsync_EmailBodyContainsNodeName()
+        public async Task ProcessDocumentsAsync_PayloadContainsNodeName()
         {
-            Amazon.SimpleEmail.Model.SendEmailRequest? capturedRequest = null;
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default))
-                   .Callback<Amazon.SimpleEmail.Model.SendEmailRequest, System.Threading.CancellationToken>(
-                       (req, _) => capturedRequest = req)
-                   .ReturnsAsync(new Amazon.SimpleEmail.Model.SendEmailResponse());
+            HttpRequestMessage? capturedRequest = null;
+            var handlerMock = new Mock<HttpMessageHandler>();
+            handlerMock.Protected()
+                .Setup<Task<HttpResponseMessage>>("SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
 
             var detectionCounterMock = new Mock<IDetectionCounter>();
             detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
@@ -263,25 +281,28 @@ namespace NotificationFunction.Tests.Unit
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
                      .ReturnsAsync((DateTime?)null);
 
-            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+            var (function, _) = BuildFunction(handlerMock, detectionCounterMock, stateMock);
 
             var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
             Assert.NotNull(capturedRequest);
-            Assert.Contains(NodeName, capturedRequest!.Message.Body.Html.Data);
+            string body = await capturedRequest!.Content!.ReadAsStringAsync();
+            Assert.Contains(NodeName, body);
         }
 
         [Fact]
-        public async Task ProcessDocumentsAsync_EmailBodyContainsDetectionCount()
+        public async Task ProcessDocumentsAsync_PayloadContainsCategory()
         {
-            Amazon.SimpleEmail.Model.SendEmailRequest? capturedRequest = null;
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default))
-                   .Callback<Amazon.SimpleEmail.Model.SendEmailRequest, System.Threading.CancellationToken>(
-                       (req, _) => capturedRequest = req)
-                   .ReturnsAsync(new Amazon.SimpleEmail.Model.SendEmailResponse());
+            HttpRequestMessage? capturedRequest = null;
+            var handlerMock = new Mock<HttpMessageHandler>();
+            handlerMock.Protected()
+                .Setup<Task<HttpResponseMessage>>("SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
 
             var detectionCounterMock = new Mock<IDetectionCounter>();
             detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
@@ -291,14 +312,16 @@ namespace NotificationFunction.Tests.Unit
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
                      .ReturnsAsync((DateTime?)null);
 
-            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+            var (function, _) = BuildFunction(handlerMock, detectionCounterMock, stateMock);
 
             var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
             Assert.NotNull(capturedRequest);
-            Assert.Contains("5", capturedRequest!.Message.Body.Html.Data);
+            string body = await capturedRequest!.Content!.ReadAsStringAsync();
+            // Default category when no comments field present is "Whale"
+            Assert.Contains("Whale", body);
         }
 
         // ---------------------------------------------------------------------------
@@ -306,12 +329,8 @@ namespace NotificationFunction.Tests.Unit
         // ---------------------------------------------------------------------------
 
         [Fact]
-        public async Task ProcessDocumentsAsync_SendsEmail_WhenMatchingDocIsNotFirst()
+        public async Task ProcessDocumentsAsync_SendsNotification_WhenMatchingDocIsNotFirst()
         {
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default))
-                   .ReturnsAsync(new Amazon.SimpleEmail.Model.SendEmailResponse());
-
             var detectionCounterMock = new Mock<IDetectionCounter>();
             detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
                                  .ReturnsAsync(2);
@@ -320,7 +339,7 @@ namespace NotificationFunction.Tests.Unit
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(LocationId))
                      .ReturnsAsync((DateTime?)null);
 
-            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+            var (function, handlerMock) = BuildFunction(detectionCounterMock: detectionCounterMock, stateMock: stateMock);
 
             var input = new List<JsonElement>
             {
@@ -328,20 +347,21 @@ namespace NotificationFunction.Tests.Unit
                 MakeDetection(LocationId, NodeName, reviewed: false),
             };
 
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Once);
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Once(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
         }
 
         [Fact]
-        public async Task ProcessDocumentsAsync_DoesNotSendEmail_WhenMatchingDocIsReviewedAndOtherIsNot()
+        public async Task ProcessDocumentsAsync_DoesNotSendNotification_WhenMatchingDocIsReviewedAndOtherIsNot()
         {
             // The reviewed matching doc should be skipped; unreviewed non-matching doc should not trigger.
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            var function = BuildFunction(sesMock);
+            var (function, handlerMock) = BuildFunction();
 
             var input = new List<JsonElement>
             {
@@ -349,16 +369,18 @@ namespace NotificationFunction.Tests.Unit
                 MakeDetection("rpi_other", "Other Node", reviewed: false),
             };
 
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            sesMock.Verify(
-                x => x.SendEmailAsync(It.IsAny<Amazon.SimpleEmail.Model.SendEmailRequest>(), default),
-                Times.Never);
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Never(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
         }
 
         [Fact]
-        public async Task ProcessDocumentsAsync_UpdatesLastNotificationTime_WhenEmailSent()
+        public async Task ProcessDocumentsAsync_UpdatesLastNotificationTime_WhenNotificationSent()
         {
             // Arrange
             var stateMock = new Mock<INotificationStateStore>();
@@ -368,25 +390,24 @@ namespace NotificationFunction.Tests.Unit
             stateMock.Setup(x => x.UpdateLastNotificationTimeAsync(It.IsAny<string>()))
                      .Returns(Task.CompletedTask);
 
-            var sesMock = new Mock<IAmazonSimpleEmailService>();
-            sesMock.Setup(x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), default))
-                   .ReturnsAsync(new SendEmailResponse());
-
             var detectionCounterMock = new Mock<IDetectionCounter>();
             detectionCounterMock.Setup(x => x.CountRecentAsync(LocationId, DetectionPeriodMinutes))
                                  .ReturnsAsync(2);
 
-            var function = BuildFunction(sesMock, detectionCounterMock, stateMock);
+            var (function, handlerMock) = BuildFunction(detectionCounterMock: detectionCounterMock, stateMock: stateMock);
 
             // Act
             var input = new List<JsonElement> { MakeDetection(LocationId, NodeName, reviewed: false) };
-            await function.ProcessDocumentsAsync(input, LocationId, RecipientEmail, SenderEmail,
+            await function.ProcessDocumentsAsync(input, LocationId, AppNotificationUrl,
                 NotificationPeriodMinutes, DetectionPeriodMinutes);
 
-            // Assert - verify the email was sent and the state store was updated
-            sesMock.Verify(x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), default), Times.Once);
+            // Assert - verify the notification was sent and the state store was updated
+            handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Once(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
             stateMock.Verify(x => x.UpdateLastNotificationTimeAsync(LocationId), Times.Once);
-            // (Removed redundant assertions: the return value here is controlled by the mock setup above.)
         }
     }
 }

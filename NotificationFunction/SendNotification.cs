@@ -1,35 +1,35 @@
 // SPDX-License-Identifier: MIT
-using Amazon.SimpleEmail;
-using Amazon.SimpleEmail.Model;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace NotificationFunction
 {
-    public class SendNotificationEmail
+    public class SendNotification
     {
         private readonly ILogger _logger;
-        private readonly IAmazonSimpleEmailService _sesClient;
+        private readonly IHttpClientFactory _httpClientFactory;
         private readonly IDetectionCounter _detectionCounter;
         private readonly INotificationStateStore _notificationStateStore;
 
-        public SendNotificationEmail(
-            ILogger<SendNotificationEmail> logger,
-            IAmazonSimpleEmailService sesClient,
+        public SendNotification(
+            ILogger<SendNotification> logger,
+            IHttpClientFactory httpClientFactory,
             IDetectionCounter detectionCounter,
             INotificationStateStore notificationStateStore)
         {
             _logger = logger;
-            _sesClient = sesClient;
+            _httpClientFactory = httpClientFactory;
             _detectionCounter = detectionCounter;
             _notificationStateStore = notificationStateStore;
         }
 
-        [Function("SendNotificationEmail")]
+        [Function("SendNotification")]
         public async Task Run(
             [CosmosDBTrigger(
                 databaseName: "%CosmosDbDatabase%",
@@ -45,8 +45,7 @@ namespace NotificationFunction
             }
 
             string? locationId = Environment.GetEnvironmentVariable("LocationId");
-            string? recipientEmail = Environment.GetEnvironmentVariable("RecipientEmail");
-            string? senderEmail = Environment.GetEnvironmentVariable("SenderEmail");
+            string? appNotificationUrl = Environment.GetEnvironmentVariable("AppNotificationUrl");
 
             if (string.IsNullOrEmpty(locationId))
             {
@@ -54,15 +53,9 @@ namespace NotificationFunction
                 return;
             }
 
-            if (string.IsNullOrEmpty(recipientEmail))
+            if (string.IsNullOrEmpty(appNotificationUrl))
             {
-                _logger.LogError("RecipientEmail environment variable is not configured");
-                return;
-            }
-
-            if (string.IsNullOrEmpty(senderEmail))
-            {
-                _logger.LogError("SenderEmail environment variable is not configured");
+                _logger.LogError("AppNotificationUrl environment variable is not configured");
                 return;
             }
 
@@ -72,7 +65,7 @@ namespace NotificationFunction
                 Environment.GetEnvironmentVariable("DetectionPeriodMinutes"), out int dp) ? dp : 15;
 
             await ProcessDocumentsAsync(
-                input, locationId, recipientEmail, senderEmail,
+                input, locationId, appNotificationUrl,
                 notificationPeriodMinutes, detectionPeriodMinutes);
         }
 
@@ -80,13 +73,12 @@ namespace NotificationFunction
         /// Core notification logic, factored out of Run for testability.
         /// Inspects <paramref name="input"/> for an unreviewed detection matching
         /// <paramref name="locationId"/>, enforces rate-limiting and a minimum
-        /// cluster size, then sends an email when all conditions are satisfied.
+        /// cluster size, then posts a notification when all conditions are satisfied.
         /// </summary>
         public async Task ProcessDocumentsAsync(
             IReadOnlyList<JsonElement> input,
             string locationId,
-            string recipientEmail,
-            string senderEmail,
+            string appNotificationUrl,
             int notificationPeriodMinutes,
             int detectionPeriodMinutes)
         {
@@ -151,34 +143,27 @@ namespace NotificationFunction
                 category = spaceIndex >= 0 ? remainder.Substring(0, spaceIndex) : remainder;
             }
 
-            // Send email notification.
-            string subject = $"You've got whale!";
-            string textBody = $"A {category} has been detected at {nodeName}.\n" +
-                              $"There have been {recentDetectionCount} detections in the past {detectionPeriodMinutes} minutes.\n" +
-                              $"Time: {DateTime.UtcNow:u}\n";
-            string body = $"<p>A {category} has been detected at <strong>{nodeName}</strong>.</p>" +
-                          $"<p>There have been {recentDetectionCount} detections in the past {detectionPeriodMinutes} minutes.</p>" +
-                          $"<p>Time: {DateTime.UtcNow:u}</p>";
-
-            var emailRequest = new SendEmailRequest
+            // Send notification via HTTP POST using IFTTT's webhook JSON payload format:
+            //   value1 = category (e.g., "Whale" or AI-identified species)
+            //   value2 = node name (hydrophone location)
+            //   value3 = reserved / empty
+            var payload = new { value1 = category, value2 = nodeName, value3 = string.Empty };
+            string json = JsonSerializer.Serialize(payload);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var httpClient = _httpClientFactory.CreateClient();
+            HttpResponseMessage response = await httpClient.PostAsync(appNotificationUrl, content);
+            if (response.IsSuccessStatusCode)
             {
-                Source = senderEmail,
-                Destination = new Destination(new List<string> { recipientEmail }),
-                Message = new Message
-                {
-                    Subject = new Content(subject),
-                    Body = new Body
-                    {
-                        Text = new Content { Charset = "UTF-8", Data = textBody },
-                        Html = new Content { Charset = "UTF-8", Data = body }
-                    }
-                }
-            };
-
-            SendEmailResponse response = await _sesClient.SendEmailAsync(emailRequest);
-            _logger.LogInformation(
-                "Sent notification email for {NodeName}: {StatusCode}",
-                nodeName, response.HttpStatusCode);
+                _logger.LogInformation(
+                    "Sent notification for {NodeName}: {StatusCode}",
+                    nodeName, response.StatusCode);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Notification POST for {NodeName} returned non-success status: {StatusCode}",
+                    nodeName, response.StatusCode);
+            }
 
             // Update last notification time.
             await _notificationStateStore.UpdateLastNotificationTimeAsync(locationId);
