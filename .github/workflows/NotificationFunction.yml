@@ -12,6 +12,7 @@ on:
 
 env:
   DOTNET_VERSION: 8.0.x
+  DOTNET_RUNTIME: win-x86
   WORKING_DIR: NotificationFunction
   PUBLISH_DIR: output
   AZURE_FUNCTIONAPP_NAME: youve-got-whale
@@ -67,7 +68,7 @@ jobs:
       - name: Integration Tests
         run: dotnet test NotificationFunction.Tests.Integration --no-build -c Release
       - name: Publish
-        run: dotnet publish ${{ env.WORKING_DIR }}/NotificationFunction.csproj --no-build -c Release -o ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
+        run: dotnet publish ${{ env.WORKING_DIR }}/NotificationFunction.csproj -c Release -r ${{ env.DOTNET_RUNTIME }} --self-contained -o ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
       - name: Upload published artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
