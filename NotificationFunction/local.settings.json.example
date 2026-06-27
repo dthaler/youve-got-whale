@@ -9,10 +9,8 @@
         "NotificationCosmosDbConnection": "<read-write-notifications-cosmos-db-connection-string>",
         "NotificationCosmosDbDatabase": "orcasound-cosmosdb",
         "NotificationCosmosDbContainer": "Notifications",
-        "SenderEmail": "<your-sender-email@example.com>",
-        "AwsRegion": "us-west-2",
+        "AppNotificationUrl": "<your-ifttt-webhook-url>",
         "LocationId": "<hydrophone-location-id>",
-        "RecipientEmail": "<notification-recipient@example.com>",
         "NotificationPeriodMinutes": "60",
         "DetectionPeriodMinutes": "15"
     }

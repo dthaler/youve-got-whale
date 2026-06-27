@@ -1,6 +1,6 @@
 # You've Got Whale
 
-Azure Functions app that sends email alerts when whale detections cluster at a configured hydrophone node.
+Azure Functions app that sends app notifications when whale detections cluster at a configured hydrophone node.
 
 The detections container is treated as read-only. Notification rate-limit state is stored in a separate writable Cosmos DB container.
 
@@ -18,10 +18,8 @@ Copy `NotificationFunction/local.settings.json.example` to `NotificationFunction
 | `NotificationCosmosDbConnection` | Yes | — | Read-write notifications Cosmos DB connection string |
 | `NotificationCosmosDbDatabase` | No | `orcasound-cosmosdb` | Notifications Cosmos DB database name |
 | `NotificationCosmosDbContainer` | No | `Notifications` | Notifications Cosmos DB container name |
-| `SenderEmail` | Yes | — | AWS SES sender address |
-| `AwsRegion` | No | `us-west-2` | AWS region for SES |
+| `AppNotificationUrl` | Yes | — | IFTTT webhook URL for notifications |
 | `LocationId` | Yes | — | Hydrophone location ID to monitor |
-| `RecipientEmail` | Yes | — | Notification recipient |
 | `NotificationPeriodMinutes` | No | `60` | Minimum time between notifications |
 | `DetectionPeriodMinutes` | No | `15` | Detection lookback window |
 
@@ -45,5 +43,5 @@ The solution includes two test projects:
   notification-suppression logic; all external dependencies are mocked and no cloud
   connections are needed.
 - **`NotificationFunction.Tests.Integration`** – integration tests that exercise the
-  full `ProcessDocumentsAsync` pipeline end-to-end with mocked SES, detection
+  full `ProcessDocumentsAsync` pipeline end-to-end with mocked HTTP client, detection
   counter, and state store; also requires no cloud connections.

@@ -1,6 +1,6 @@
 # You've Got Whale
 
-Azure Functions app that sends email alerts when whale detections cluster at a configured hydrophone node.
+Azure Functions app that sends app notifications when whale detections cluster at a configured hydrophone node.
 
 ## Configuration
 
@@ -14,10 +14,8 @@ Copy `NotificationFunction/local.settings.json.example` to `NotificationFunction
 | `CosmosDbDatabase` | No | `detections` | Cosmos DB database name |
 | `CosmosDbContainer` | No | `metadata` | Cosmos DB container name |
 | `StorageConnection` | Yes | — | Azure Table Storage connection string |
-| `SenderEmail` | Yes | — | AWS SES sender address |
-| `AwsRegion` | No | `us-west-2` | AWS region for SES |
+| `AppNotificationUrl` | Yes | — | IFTTT webhook URL for notifications |
 | `NODE_NAME` | Yes | — | Hydrophone location name to monitor |
-| `EMAIL_DESTINATION` | Yes | — | Notification recipient |
 | `NOTIFICATION_PERIOD_MINUTES` | No | `60` | Minimum time between notifications |
 | `DETECTION_PERIOD_MINUTES` | No | `15` | Detection lookback window |
 
