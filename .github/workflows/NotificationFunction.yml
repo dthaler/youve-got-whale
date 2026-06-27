@@ -75,6 +75,7 @@ jobs:
           name: notificationfunction-publish
           path: ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
           if-no-files-found: error
+          include-hidden-files: true
   test-windows:
     runs-on: windows-latest
     needs: changes
