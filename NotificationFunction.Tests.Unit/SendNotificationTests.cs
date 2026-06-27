@@ -22,7 +22,7 @@ namespace NotificationFunction.Tests.Unit
     {
         private const string LocationId = "rpi_orcasound_lab";
         private const string NodeName = "Orcasound Lab";
-        private const string AppNotificationUrl = "https://maker.ifttt.com/trigger/whale/json/with/key/testkey";
+        private const string AppNotificationUrl = "https://maker.ifttt.com/trigger/youve-got-whale/json/with/key/testkey";
         private const int NotificationPeriodMinutes = 60;
         private const int DetectionPeriodMinutes = 15;
 
