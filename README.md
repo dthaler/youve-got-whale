@@ -15,9 +15,9 @@ Copy `NotificationFunction/local.settings.json.example` to `NotificationFunction
 | `CosmosDbContainer` | No | `metadata` | Cosmos DB container name |
 | `StorageConnection` | Yes | — | Azure Table Storage connection string |
 | `AppNotificationUrl` | Yes | — | IFTTT webhook URL for notifications |
-| `NODE_NAME` | Yes | — | Hydrophone location name to monitor |
-| `NOTIFICATION_PERIOD_MINUTES` | No | `60` | Minimum time between notifications |
-| `DETECTION_PERIOD_MINUTES` | No | `15` | Detection lookback window |
+| `LocationId` | Yes | — | Hydrophone location name to monitor |
+| `NotificationPeriodMinutes` | No | `60` | Minimum time between notifications |
+| `DetectionPeriodMinutes` | No | `15` | Detection lookback window |
 
 ## Build
 
