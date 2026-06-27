@@ -143,7 +143,10 @@ namespace NotificationFunction
                 category = spaceIndex >= 0 ? remainder.Substring(0, spaceIndex) : remainder;
             }
 
-            // Send notification via HTTP POST.
+            // Send notification via HTTP POST using IFTTT's webhook JSON payload format:
+            //   value1 = category (e.g. "Whale" or AI-identified species)
+            //   value2 = node name (hydrophone location)
+            //   value3 = reserved / empty
             var payload = new { value1 = category, value2 = nodeName, value3 = string.Empty };
             string json = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
