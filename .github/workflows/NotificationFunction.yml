@@ -60,7 +60,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: Restore dependencies
-        run: dotnet restore NotificationFunction.sln -r ${{ env.DOTNET_RUNTIME }}
+        run: dotnet restore NotificationFunction.sln
       - name: Build
         run: dotnet build NotificationFunction.sln --no-restore -c Release
       - name: Unit Tests
@@ -68,7 +68,7 @@ jobs:
       - name: Integration Tests
         run: dotnet test NotificationFunction.Tests.Integration --no-build -c Release
       - name: Publish
-        run: dotnet publish ${{ env.WORKING_DIR }}/NotificationFunction.csproj --no-build -c Release -r ${{ env.DOTNET_RUNTIME }} --self-contained -o ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
+        run: dotnet publish ${{ env.WORKING_DIR }}/NotificationFunction.csproj -c Release -r ${{ env.DOTNET_RUNTIME }} --self-contained -o ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
       - name: Upload published artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
