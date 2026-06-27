@@ -75,10 +75,14 @@ namespace NotificationFunction.Tests.Integration
             stateMock.Setup(x => x.GetLastNotificationTimeAsync(It.IsAny<string>()))
                      .ReturnsAsync(lastNotificationTime);
 
+            var httpClient = new HttpClient(handlerMock.Object);
+            var factoryMock = new Mock<IHttpClientFactory>();
+            factoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
             var loggerMock = new Mock<Microsoft.Extensions.Logging.ILogger<SendNotification>>();
             var function = new SendNotification(
                 loggerMock.Object,
-                new HttpClient(handlerMock.Object),
+                factoryMock.Object,
                 detectionCounterMock.Object,
                 stateMock.Object);
 
@@ -237,9 +241,12 @@ namespace NotificationFunction.Tests.Integration
                      .ReturnsAsync((DateTime?)null);
 
             var loggerMock = new Mock<Microsoft.Extensions.Logging.ILogger<SendNotification>>();
+            var httpClient = new HttpClient(handlerMock.Object);
+            var factoryMock = new Mock<IHttpClientFactory>();
+            factoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
             var function = new SendNotification(
                 loggerMock.Object,
-                new HttpClient(handlerMock.Object),
+                factoryMock.Object,
                 detectionCounterMock.Object,
                 stateMock.Object);
 

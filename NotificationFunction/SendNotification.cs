@@ -13,18 +13,18 @@ namespace NotificationFunction
     public class SendNotification
     {
         private readonly ILogger _logger;
-        private readonly HttpClient _httpClient;
+        private readonly IHttpClientFactory _httpClientFactory;
         private readonly IDetectionCounter _detectionCounter;
         private readonly INotificationStateStore _notificationStateStore;
 
         public SendNotification(
             ILogger<SendNotification> logger,
-            HttpClient httpClient,
+            IHttpClientFactory httpClientFactory,
             IDetectionCounter detectionCounter,
             INotificationStateStore notificationStateStore)
         {
             _logger = logger;
-            _httpClient = httpClient;
+            _httpClientFactory = httpClientFactory;
             _detectionCounter = detectionCounter;
             _notificationStateStore = notificationStateStore;
         }
@@ -147,10 +147,20 @@ namespace NotificationFunction
             var payload = new { value1 = category, value2 = nodeName, value3 = string.Empty };
             string json = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
-            HttpResponseMessage response = await _httpClient.PostAsync(appNotificationUrl, content);
-            _logger.LogInformation(
-                "Sent notification for {NodeName}: {StatusCode}",
-                nodeName, response.StatusCode);
+            var httpClient = _httpClientFactory.CreateClient();
+            HttpResponseMessage response = await httpClient.PostAsync(appNotificationUrl, content);
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation(
+                    "Sent notification for {NodeName}: {StatusCode}",
+                    nodeName, response.StatusCode);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Notification POST for {NodeName} returned non-success status: {StatusCode}",
+                    nodeName, response.StatusCode);
+            }
 
             // Update last notification time.
             await _notificationStateStore.UpdateLastNotificationTimeAsync(locationId);

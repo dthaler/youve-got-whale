@@ -60,10 +60,13 @@ namespace NotificationFunction.Tests.Unit
             stateMock ??= new Mock<INotificationStateStore>();
 
             var httpClient = new HttpClient(handlerMock.Object);
+            var factoryMock = new Mock<IHttpClientFactory>();
+            factoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
             var loggerMock = new Mock<Microsoft.Extensions.Logging.ILogger<SendNotification>>();
             var function = new SendNotification(
                 loggerMock.Object,
-                httpClient,
+                factoryMock.Object,
                 detectionCounterMock.Object,
                 stateMock.Object);
 

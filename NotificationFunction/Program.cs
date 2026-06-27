@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using NotificationFunction;
 using System;
-using System.Net.Http;
 
 string GetRequiredEnvironmentVariable(string name)
 {
@@ -22,7 +21,7 @@ var host = new HostBuilder()
     .ConfigureServices(services =>
     {
         services.AddLogging();
-        services.AddSingleton<HttpClient>();
+        services.AddHttpClient();
         services.AddSingleton<CosmosClient>(_ => new CosmosClient(GetRequiredEnvironmentVariable("CosmosDbConnection")));
         services.AddSingleton<IDetectionCounter, CosmosDetectionCounter>();
         services.AddSingleton<INotificationStateStore>(_ =>
