@@ -122,6 +122,13 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Ensure Function App runtime settings
+        run: |
+          az functionapp config appsettings set \
+            --resource-group LiveSRKWNotificationSystem \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
+            --settings FUNCTIONS_WORKER_RUNTIME=dotnet-isolated FUNCTIONS_EXTENSION_VERSION=~4 WEBSITE_RUN_FROM_PACKAGE=1
+
       - name: Deploy via Zip Deploy
         run: |
           cd ${{ github.workspace }}/${{ env.WORKING_DIR }}/${{ env.PUBLISH_DIR }}
