@@ -35,7 +35,7 @@ namespace NotificationFunction
                 databaseName: "%CosmosDbDatabase%",
                 containerName: "%CosmosDbContainer%",
                 Connection = "CosmosDbConnection",
-                LeaseContainerName = "leases",
+                LeaseContainerName = "leases-ygw",
                 CreateLeaseContainerIfNotExists = true)] IReadOnlyList<JsonElement> input)
         {
             if (input == null || input.Count == 0)
