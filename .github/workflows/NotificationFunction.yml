@@ -129,7 +129,14 @@ jobs:
           az functionapp config appsettings set \
             --resource-group LiveSRKWNotificationSystem \
             --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
-            --settings FUNCTIONS_WORKER_RUNTIME=dotnet-isolated FUNCTIONS_EXTENSION_VERSION=~4 WEBSITE_RUN_FROM_PACKAGE=1
+            --settings FUNCTIONS_WORKER_RUNTIME=dotnet-isolated FUNCTIONS_EXTENSION_VERSION=~4
+
+      - name: Ensure Zip Deploy is allowed
+        run: |
+          az functionapp config appsettings delete \
+            --resource-group LiveSRKWNotificationSystem \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
+            --setting-names WEBSITE_RUN_FROM_PACKAGE
 
       - name: Deploy via Zip Deploy
         run: |
